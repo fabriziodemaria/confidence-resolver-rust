@@ -23,19 +23,6 @@ export interface RemoteResolverFallbackOptions {
  * and needs to fall back to the server for resolution. The remote API handles
  * materialization storage with a 90-day TTL.
  *
- * @example
- * ```typescript
- * const fallback = new RemoteResolverFallback({
- *   baseUrl: 'https://resolver.confidence.dev/v1'
- * });
- *
- * const provider = createConfidenceServerProvider({
- *   flagClientSecret: 'client-secret',
- *   apiClientId: 'api-id',
- *   apiClientSecret: 'api-secret',
- *   stickyResolveStrategy: fallback
- * });
- * ```
  */
 export class RemoteResolverFallback implements ResolverFallback {
   private readonly baseUrl: string;
