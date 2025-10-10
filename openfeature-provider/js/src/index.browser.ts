@@ -17,6 +17,10 @@ export type {
   ResolverFallback
 } from './StickyResolveStrategy';
 
+// Re-export RemoteResolverFallback implementation
+export { RemoteResolverFallback } from './RemoteResolverFallback';
+export type { RemoteResolverFallbackOptions } from './RemoteResolverFallback';
+
 // Re-export proto types that users may need
 export type {
   MaterializationInfo,

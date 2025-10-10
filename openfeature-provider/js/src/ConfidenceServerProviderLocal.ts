@@ -30,6 +30,7 @@ import {
   MaterializationRepository
 } from './StickyResolveStrategy';
 import { handleMissingMaterializations, storeUpdates } from './materializationUtils';
+import { RemoteResolverFallback } from './RemoteResolverFallback';
 
 export const DEFAULT_STATE_INTERVAL = 30_000;
 export const DEFAULT_FLUSH_INTERVAL = 10_000;
@@ -58,7 +59,7 @@ export class ConfidenceServerProviderLocal implements Provider {
   private readonly main = new AbortController();
   private readonly fetch:Fetch;
   private readonly flushInterval:number;
-  private readonly stickyResolveStrategy?: StickyResolveStrategy;
+  private readonly stickyResolveStrategy: StickyResolveStrategy;
   private stateEtag:string | null = null;
 
 
@@ -67,7 +68,7 @@ export class ConfidenceServerProviderLocal implements Provider {
     // TODO better error handling
     // TODO validate options
     this.flushInterval = options.flushInterval ?? DEFAULT_FLUSH_INTERVAL;
-    this.stickyResolveStrategy = options.stickyResolveStrategy; // TODO default to RemoteResolveFallback
+    this.stickyResolveStrategy = options.stickyResolveStrategy ?? new RemoteResolverFallback({ fetch: options.fetch });
     const withConfidenceAuth = withAuth(async () => {
       const { accessToken, expiresIn } = await this.fetchToken();
       return [accessToken, new Date(Date.now() + 1000*expiresIn)]
@@ -139,9 +140,7 @@ export class ConfidenceServerProviderLocal implements Provider {
   async onClose(): Promise<void> {
     this.main.abort();
     await this.flush();
-    if (this.stickyResolveStrategy) {
-      await this.stickyResolveStrategy.close();
-    }
+    await this.stickyResolveStrategy.close();
   }
 
   // TODO test unknown flagClientSecret
@@ -160,7 +159,7 @@ export class ConfidenceServerProviderLocal implements Provider {
     const stickyRequest = {
       resolveRequest,
       materializationsPerUnit: {},
-      failFastOnSticky: isResolverFallback(this.stickyResolveStrategy!) // TODO remove `!`
+      failFastOnSticky: isResolverFallback(this.stickyResolveStrategy)
     };
 
     const response = await this.resolveWithStickyInternal(stickyRequest);
@@ -182,8 +181,8 @@ export class ConfidenceServerProviderLocal implements Provider {
 
       // Store updates if present (only for MaterializationRepository)
       // Fire-and-forget - doesn't block resolve path
-      if (updates.length > 0 && isMaterializationRepository(this.stickyResolveStrategy!)) { // TODO remove `!`
-        storeUpdates(updates, this.stickyResolveStrategy!); // TODO remove `!`
+      if (updates.length > 0 && isMaterializationRepository(this.stickyResolveStrategy)) {
+        storeUpdates(updates, this.stickyResolveStrategy);
       }
 
       return flagsResponse;
@@ -194,22 +193,22 @@ export class ConfidenceServerProviderLocal implements Provider {
       const { items } = response.missingMaterializations;
 
       // Check for ResolverFallback first - return early if so
-      if (isResolverFallback(this.stickyResolveStrategy!)) { // TODO remove `!`
-        return await this.stickyResolveStrategy!.resolve(request.resolveRequest!); // TODO remove `!`
+      if (isResolverFallback(this.stickyResolveStrategy)) {
+        return await this.stickyResolveStrategy.resolve(request.resolveRequest!);
       }
 
       // Handle MaterializationRepository case
-      if (isMaterializationRepository(this.stickyResolveStrategy!)) { // TODO remove `!`
+      if (isMaterializationRepository(this.stickyResolveStrategy)) {
         const updatedRequest = await handleMissingMaterializations(
           request,
           items,
-          this.stickyResolveStrategy! // TODO remove `!`
+          this.stickyResolveStrategy
         );
         return this.resolveWithStickyInternal(updatedRequest);
       }
 
       throw new Error(
-        `Unknown sticky resolve strategy: ${this.stickyResolveStrategy!.constructor.name}` // TODO remove `!`
+        `Unknown sticky resolve strategy: ${this.stickyResolveStrategy.constructor.name}`
       );
     }
 
