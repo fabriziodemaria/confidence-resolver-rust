@@ -1,7 +1,7 @@
 import { BinaryWriter } from '@bufbuild/protobuf/wire';
 import { Request, Response, Void } from './proto/messages';
 import { Timestamp } from './proto/google/protobuf/timestamp';
-import { ResolveFlagsRequest, ResolveFlagsResponse, SetResolverStateRequest } from './proto/api';
+import { ResolveFlagsRequest, ResolveFlagsResponse, ResolveWithStickyRequest, ResolveWithStickyResponse, SetResolverStateRequest } from './proto/api';
 import { LocalResolver } from './LocalResolver';
 
 type Codec<T> = {
@@ -28,6 +28,12 @@ export class WasmResolver implements LocalResolver {
     const reqPtr = this.transferRequest(request, ResolveFlagsRequest);
     const resPtr = this.exports.wasm_msg_guest_resolve(reqPtr);
     return this.consumeResponse(resPtr, ResolveFlagsResponse);
+  }
+
+  resolveWithSticky(request: ResolveWithStickyRequest): ResolveWithStickyResponse {
+    const reqPtr = this.transferRequest(request, ResolveWithStickyRequest);
+    const resPtr = this.exports.wasm_msg_guest_resolve_sticky(reqPtr);
+    return this.consumeResponse(resPtr, ResolveWithStickyResponse);
   }
 
   setResolverState(request: SetResolverStateRequest): void {

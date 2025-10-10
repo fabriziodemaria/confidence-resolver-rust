@@ -1,7 +1,14 @@
-import type { ResolveFlagsRequest, ResolveFlagsResponse, SetResolverStateRequest } from "./proto/api"
+import type {
+  ResolveFlagsRequest,
+  ResolveFlagsResponse,
+  ResolveWithStickyRequest,
+  ResolveWithStickyResponse,
+  SetResolverStateRequest
+} from "./proto/api"
 
 export interface LocalResolver {
   resolveFlags(request: ResolveFlagsRequest): ResolveFlagsResponse
+  resolveWithSticky(request: ResolveWithStickyRequest): ResolveWithStickyResponse
   setResolverState(request: SetResolverStateRequest):void
   flushLogs():Uint8Array
 }

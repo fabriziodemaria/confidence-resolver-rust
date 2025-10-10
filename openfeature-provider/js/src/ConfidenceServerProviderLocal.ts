@@ -8,10 +8,28 @@ import type {
   ResolutionDetails,
   ResolutionReason,
 } from '@openfeature/server-sdk';
-import { ResolveReason } from './proto/api';
+import {
+  ResolveReason
+} from './proto/api';
+import type {
+  MaterializationInfo,
+  MaterializationMap,
+  ResolveFlagsRequest,
+  ResolveFlagsResponse,
+  ResolveWithStickyRequest,
+  ResolveWithStickyResponse_MaterializationUpdate,
+  ResolveWithStickyResponse_MissingMaterializationItem,
+} from './proto/api';
 import { Fetch, FetchMiddleware, withAuth, withLogging, withResponse, withRetry, withRouter, withStallTimeout, withTimeout } from './fetch';
 import { scheduleWithFixedInterval, timeoutSignal, TimeUnit } from './util';
 import { AccessToken, LocalResolver, ResolveStateUri } from './LocalResolver';
+import {
+  type StickyResolveStrategy,
+  isResolverFallback,
+  isMaterializationRepository,
+  MaterializationRepository
+} from './StickyResolveStrategy';
+import { handleMissingMaterializations, storeUpdates } from './materializationUtils';
 
 export const DEFAULT_STATE_INTERVAL = 30_000;
 export const DEFAULT_FLUSH_INTERVAL = 10_000;
@@ -20,8 +38,9 @@ export interface ProviderOptions {
   apiClientId:string,
   apiClientSecret:string,
   initializeTimeout?:number,
-  flushInterval?:number, 
+  flushInterval?:number,
   fetch?: typeof fetch,
+  stickyResolveStrategy?: StickyResolveStrategy,
 }
 
 /**
@@ -39,14 +58,16 @@ export class ConfidenceServerProviderLocal implements Provider {
   private readonly main = new AbortController();
   private readonly fetch:Fetch;
   private readonly flushInterval:number;
+  private readonly stickyResolveStrategy?: StickyResolveStrategy;
   private stateEtag:string | null = null;
-  
+
 
   // TODO Maybe pass in a resolver factory, so that we can initialize it in initialize and transition to fatal if not.
   constructor(private resolver:LocalResolver, private options:ProviderOptions) {
     // TODO better error handling
     // TODO validate options
     this.flushInterval = options.flushInterval ?? DEFAULT_FLUSH_INTERVAL;
+    this.stickyResolveStrategy = options.stickyResolveStrategy; // TODO default to RemoteResolveFallback
     const withConfidenceAuth = withAuth(async () => {
       const { accessToken, expiresIn } = await this.fetchToken();
       return [accessToken, new Date(Date.now() + 1000*expiresIn)]
@@ -115,52 +136,130 @@ export class ConfidenceServerProviderLocal implements Provider {
     }
   }
 
-  onClose(): Promise<void> {
+  async onClose(): Promise<void> {
     this.main.abort();
-    return this.flush();
+    await this.flush();
+    if (this.stickyResolveStrategy) {
+      await this.stickyResolveStrategy.close();
+    }
   }
 
   // TODO test unknown flagClientSecret
-  evaluate<T>(flagKey: string, defaultValue: T, context: EvaluationContext): ResolutionDetails<T> {
-    
-    const [flagName, ...path] = flagKey.split('.')
-    const { resolvedFlags: [flag]} = this.resolver.resolveFlags({
+  async evaluate<T>(flagKey: string, defaultValue: T, context: EvaluationContext): Promise<ResolutionDetails<T>> {
+    const [flagName, ...path] = flagKey.split('.');
+
+    // Build resolve request
+    const resolveRequest: ResolveFlagsRequest = {
       flags: [`flags/${flagName}`],
       evaluationContext: ConfidenceServerProviderLocal.convertEvaluationContext(context),
       apply: true,
       clientSecret: this.options.flagClientSecret
-    });
-    if(!flag) {
+    };
+
+    // Always use sticky resolve request
+    const stickyRequest = {
+      resolveRequest,
+      materializationsPerUnit: {},
+      failFastOnSticky: isResolverFallback(this.stickyResolveStrategy!) // TODO remove `!`
+    };
+
+    const response = await this.resolveWithStickyInternal(stickyRequest);
+    return this.extractValue(response.resolvedFlags[0], flagName, path, defaultValue);
+  }
+
+  /**
+   * Internal recursive method for resolving with sticky assignments.
+   * 
+   * @private
+   */
+  private async resolveWithStickyInternal(
+    request: ResolveWithStickyRequest
+  ): Promise<ResolveFlagsResponse> {
+    const response = this.resolver.resolveWithSticky(request);
+
+    if (response.success && response.success.response) {
+      const { response: flagsResponse, updates } = response.success;
+
+      // Store updates if present (only for MaterializationRepository)
+      // Fire-and-forget - doesn't block resolve path
+      if (updates.length > 0 && isMaterializationRepository(this.stickyResolveStrategy!)) { // TODO remove `!`
+        storeUpdates(updates, this.stickyResolveStrategy!); // TODO remove `!`
+      }
+
+      return flagsResponse;
+    }
+
+    // Handle missing materializations
+    if (response.missingMaterializations) {
+      const { items } = response.missingMaterializations;
+
+      // Check for ResolverFallback first - return early if so
+      if (isResolverFallback(this.stickyResolveStrategy!)) { // TODO remove `!`
+        return await this.stickyResolveStrategy!.resolve(request.resolveRequest!); // TODO remove `!`
+      }
+
+      // Handle MaterializationRepository case
+      if (isMaterializationRepository(this.stickyResolveStrategy!)) { // TODO remove `!`
+        const updatedRequest = await handleMissingMaterializations(
+          request,
+          items,
+          this.stickyResolveStrategy! // TODO remove `!`
+        );
+        return this.resolveWithStickyInternal(updatedRequest);
+      }
+
+      throw new Error(
+        `Unknown sticky resolve strategy: ${this.stickyResolveStrategy!.constructor.name}` // TODO remove `!`
+      );
+    }
+
+    throw new Error('Invalid response: resolve result not set');
+  }
+
+  /**
+   * Extract and validate the value from a resolved flag.
+   */
+  private extractValue<T>(
+    flag: any,
+    flagName: string,
+    path: string[],
+    defaultValue: T
+  ): ResolutionDetails<T> {
+    if (!flag) {
       return {
         value: defaultValue,
         reason: 'ERROR',
         errorCode: 'FLAG_NOT_FOUND' as ErrorCode
-      }
+      };
     }
-    if(flag.reason != ResolveReason.RESOLVE_REASON_MATCH) {
+
+    if (flag.reason !== ResolveReason.RESOLVE_REASON_MATCH) {
       return {
         value: defaultValue,
         reason: ConfidenceServerProviderLocal.convertReason(flag.reason),
-      }
+      };
     }
-    let value:unknown = flag.value;
-    for(const step of path) {
-      if(typeof value !== 'object' || value === null || !hasKey(value, step)) {
+
+    let value: unknown = flag.value;
+    for (const step of path) {
+      if (typeof value !== 'object' || value === null || !hasKey(value, step)) {
         return {
           value: defaultValue,
           reason: 'ERROR',
           errorCode: 'TYPE_MISMATCH' as ErrorCode
-        }
+        };
       }
       value = value[step];
     }
-    if(!isAssignableTo(value, defaultValue)) {
+
+    if (!isAssignableTo(value, defaultValue)) {
       return {
         value: defaultValue,
         reason: 'ERROR',
         errorCode: 'TYPE_MISMATCH' as ErrorCode
-      }
+      };
     }
+
     return {
       value,
       reason: 'MATCH',

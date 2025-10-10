@@ -11,3 +11,17 @@ const resolver = await WasmResolver.load(module);
 export function createConfidenceServerProvider(options:ProviderOptions):ConfidenceServerProviderLocal {
   return new ConfidenceServerProviderLocal(resolver, options)
 }
+
+// Re-export sticky resolve strategy interfaces for users to implement
+export type {
+  StickyResolveStrategy,
+  MaterializationRepository,
+  ResolverFallback
+} from './StickyResolveStrategy';
+
+// Re-export proto types that users may need
+export type {
+  MaterializationInfo,
+  ResolveFlagsRequest,
+  ResolveFlagsResponse
+} from './proto/api';
