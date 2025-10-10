@@ -32,7 +32,7 @@ export class WasmResolver implements LocalResolver {
 
   resolveWithSticky(request: ResolveWithStickyRequest): ResolveWithStickyResponse {
     const reqPtr = this.transferRequest(request, ResolveWithStickyRequest);
-    const resPtr = this.exports.wasm_msg_guest_resolve_sticky(reqPtr);
+    const resPtr = this.exports.wasm_msg_guest_resolve_with_sticky(reqPtr);
     return this.consumeResponse(resPtr, ResolveWithStickyResponse);
   }
 
