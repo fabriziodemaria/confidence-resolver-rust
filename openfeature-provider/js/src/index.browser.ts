@@ -22,7 +22,5 @@ export type { RemoteResolverFallbackOptions } from './RemoteResolverFallback';
 
 // Re-export proto types that users may need
 export type {
-  MaterializationInfo,
-  ResolveFlagsRequest,
-  ResolveFlagsResponse
+  MaterializationInfo
 } from './proto/api';
