@@ -1,125 +1,66 @@
 import * as fs from 'fs/promises';
 import type { MaterializationRepository, MaterializationInfo } from '../dist/index.node.js';
+import { InMemoryMaterializationRepo } from './InMemoryMaterializationRepo.js';
 
 /**
  * File-backed materialization repository.
  *
- * Stores all materializations in a single JSON file for persistence across restarts.
+ * Reads from file on initialization, uses in-memory storage during runtime,
+ * and writes back to file on close.
  * Data structure: { [unit: string]: { [materialization: string]: MaterializationInfo } }
  */
 export class FileBackedMaterializationRepo implements MaterializationRepository {
   private readonly filePath: string;
-  private loadCount = 0;
-  private storeCount = 0;
-  private cacheHits = 0;
-  private cacheMisses = 0;
+  private readonly memoryRepo: InMemoryMaterializationRepo;
 
   constructor(filePath: string = './materialization-cache.json') {
     this.filePath = filePath;
+    this.memoryRepo = new InMemoryMaterializationRepo();
   }
 
   /**
-   * Initialize the storage file if it doesn't exist.
+   * Initialize by loading data from file into memory.
    */
   async initialize(): Promise<void> {
     try {
-      await fs.access(this.filePath);
-    } catch {
-      // File doesn't exist, create it with empty object
-      await fs.writeFile(this.filePath, '{}', 'utf-8');
-    }
-  }
-
-  /**
-   * Helper method to create a map with a default, empty MaterializationInfo.
-   */
-  private createEmptyMap(key: string): Map<string, MaterializationInfo> {
-    const emptyInfo: MaterializationInfo = {
-      unitInInfo: false,
-      ruleToVariant: {}
-    };
-    return new Map([[key, emptyInfo]]);
-  }
-
-  /**
-   * Read all data from the file.
-   */
-  private async readAllData(): Promise<Record<string, Record<string, MaterializationInfo>>> {
-    try {
       const data = await fs.readFile(this.filePath, 'utf-8');
-      return JSON.parse(data);
-    } catch {
-      return {};
-    }
-  }
+      const allData: Record<string, Record<string, MaterializationInfo>> = JSON.parse(data);
 
-  /**
-   * Write all data to the file.
-   */
-  private async writeAllData(data: Record<string, Record<string, MaterializationInfo>>): Promise<void> {
-    await fs.writeFile(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
+      // Load all data into the in-memory repo
+      for (const [unit, materializations] of Object.entries(allData)) {
+        const assignments = new Map<string, MaterializationInfo>();
+        for (const [key, value] of Object.entries(materializations)) {
+          assignments.set(key, value);
+        }
+        await this.memoryRepo.storeAssignment(unit, assignments);
+      }
+    } catch {
+      // File doesn't exist or is invalid, start with empty state
+    }
   }
 
   async loadMaterializedAssignmentsForUnit(
     unit: string,
     materialization: string
   ): Promise<Map<string, MaterializationInfo>> {
-    this.loadCount++;
-
-    const allData = await this.readAllData();
-    const unitData = allData[unit];
-
-    if (unitData && unitData[materialization]) {
-      // Cache hit - return only the requested materialization
-      const result = new Map<string, MaterializationInfo>();
-      result.set(materialization, unitData[materialization]);
-      this.cacheHits = (this.cacheHits || 0) + 1;
-      return result;
-    }
-
-    // Cache miss
-    this.cacheMisses = (this.cacheMisses || 0) + 1;
-    return this.createEmptyMap(materialization);
+    return this.memoryRepo.loadMaterializedAssignmentsForUnit(unit, materialization);
   }
 
   async storeAssignment(
     unit: string,
     assignments: Map<string, MaterializationInfo>
   ): Promise<void> {
-    this.storeCount++;
-
-    if (!unit) {
-      return;
-    }
-
-    // Read all data
-    const allData = await this.readAllData();
-
-    // Ensure unit exists
-    if (!allData[unit]) {
-      allData[unit] = {};
-    }
-
-    // Merge new assignments with existing ones for this unit
-    for (const [key, value] of assignments) {
-      allData[unit][key] = value;
-    }
-
-    // Write back all data
-    await this.writeAllData(allData);
+    return this.memoryRepo.storeAssignment(unit, assignments);
   }
 
   async close(): Promise<void> {
-    // Optionally clean up cache file
-    // await fs.rm(this.filePath, { force: true });
+    // Export in-memory data and write to file
+    const allData = this.memoryRepo.exportData();
+    await fs.writeFile(this.filePath, JSON.stringify(allData, null, 2), 'utf-8');
+    this.memoryRepo.close();
   }
 
   getStats() {
-    return {
-      loads: this.loadCount,
-      stores: this.storeCount,
-      cacheHits: this.cacheHits,
-      cacheMisses: this.cacheMisses
-    };
+    return this.memoryRepo.getStats();
   }
 }

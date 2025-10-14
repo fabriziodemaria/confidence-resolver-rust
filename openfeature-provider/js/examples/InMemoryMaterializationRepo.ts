@@ -92,4 +92,20 @@ export class InMemoryMaterializationRepo implements MaterializationRepository {
       cacheMisses: this.cacheMisses
     };
   }
+
+  /**
+   * Export all stored data as a plain object for serialization.
+   */
+  exportData(): Record<string, Record<string, MaterializationInfo>> {
+    const result: Record<string, Record<string, MaterializationInfo>> = {};
+
+    for (const [unit, materializations] of this.storage.entries()) {
+      result[unit] = {};
+      for (const [key, value] of materializations.entries()) {
+        result[unit][key] = value;
+      }
+    }
+
+    return result;
+  }
 }
