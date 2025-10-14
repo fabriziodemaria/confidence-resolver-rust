@@ -41,7 +41,7 @@ export interface ProviderOptions {
   initializeTimeout?:number,
   flushInterval?:number,
   fetch?: typeof fetch,
-  stickyResolveStrategy?: StickyResolveStrategy,
+  materializationRepository?: MaterializationRepository | RemoteResolverFallback,
 }
 
 /**
@@ -68,7 +68,7 @@ export class ConfidenceServerProviderLocal implements Provider {
     // TODO better error handling
     // TODO validate options
     this.flushInterval = options.flushInterval ?? DEFAULT_FLUSH_INTERVAL;
-    this.stickyResolveStrategy = options.stickyResolveStrategy ?? new RemoteResolverFallback({ fetch: options.fetch });
+    this.stickyResolveStrategy = options.materializationRepository ?? new RemoteResolverFallback({ fetch: options.fetch });
     const withConfidenceAuth = withAuth(async () => {
       const { accessToken, expiresIn } = await this.fetchToken();
       return [accessToken, new Date(Date.now() + 1000*expiresIn)]

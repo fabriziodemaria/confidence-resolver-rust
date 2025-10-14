@@ -169,7 +169,7 @@ describe('sticky resolve', () => {
         apiClientId: 'apiClientId',
         apiClientSecret: 'apiClientSecret',
         fetch: mockedFetch,
-        stickyResolveStrategy: mockRepository
+        materializationRepository: mockRepository
       });
 
       await providerWithRepo.initialize();
@@ -363,7 +363,7 @@ describe('sticky resolve', () => {
         apiClientId: 'apiClientId',
         apiClientSecret: 'apiClientSecret',
         fetch: mockedFetch,
-        stickyResolveStrategy: mockFallback
+        materializationRepository: mockFallback
       });
 
       await providerWithFallback.initialize();
