@@ -3,11 +3,10 @@ import { AccessToken, LocalResolver, ResolveStateUri } from './LocalResolver';
 import { ConfidenceServerProviderLocal, DEFAULT_STATE_INTERVAL } from './ConfidenceServerProviderLocal';
 import { abortableSleep, TimeUnit } from './util';
 import type { MaterializationRepository, ResolverFallback } from './StickyResolveStrategy';
-import type { MaterializationInfo, ResolveFlagsRequest, ResolveFlagsResponse, ResolveReason } from './proto/api';
+import type { MaterializationInfo, ResolveReason } from './proto/api';
 
 
 const mockedWasmResolver:MockedObject<LocalResolver> = {
-  resolveFlags: vi.fn(),
   resolveWithSticky: vi.fn(),
   setResolverState: vi.fn(),
   flushLogs: vi.fn().mockReturnValue(new Uint8Array(100))
