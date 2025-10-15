@@ -22,6 +22,35 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Pre-bump providers if resolver changed since last tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          LAST_TAG=$(git tag --list 'confidence_resolver-v*' | sort -V | tail -n1 || true)
+          CHANGED=true
+          if [ -n "${LAST_TAG:-}" ]; then
+            if git diff --quiet "${LAST_TAG}"..HEAD -- confidence-resolver; then
+              CHANGED=false
+            fi
+          fi
+          if [ "$CHANGED" = true ]; then
+            mkdir -p openfeature-provider/js openfeature-provider/java
+            SHA=$(git rev-parse --short HEAD)
+            echo "$SHA" > openfeature-provider/js/CONFIDENCE_RESOLVER_ADOPTED_SHA
+            echo "$SHA" > openfeature-provider/java/CONFIDENCE_RESOLVER_ADOPTED_SHA
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add openfeature-provider/js/CONFIDENCE_RESOLVER_ADOPTED_SHA openfeature-provider/java/CONFIDENCE_RESOLVER_ADOPTED_SHA
+            if git diff --cached --quiet; then
+              echo "No provider marker changes to commit"
+            else
+              git commit -m "fix: adopt latest confidence-resolver changes"
+              git push
+            fi
+          else
+            echo "confidence-resolver unchanged since last tag; skipping provider bump"
+          fi
+
       - name: Release Please (manifest)
         id: release
         uses: googleapis/release-please-action@v4
@@ -127,3 +156,4 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
