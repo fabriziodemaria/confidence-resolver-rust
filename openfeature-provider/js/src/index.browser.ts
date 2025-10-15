@@ -13,11 +13,7 @@ export function createConfidenceServerProvider(options:ProviderOptions):Confiden
 // Re-export sticky resolve strategy interfaces for users to implement
 export type {
   MaterializationRepository
-} from './StickyResolveStrategy';
-
-// Re-export RemoteResolverFallback implementation
-export { RemoteResolverFallback } from './RemoteResolverFallback';
-export type { RemoteResolverFallbackOptions } from './RemoteResolverFallback';
+} from './MaterializationRepository';
 
 // Re-export proto types that users may need
 export type {

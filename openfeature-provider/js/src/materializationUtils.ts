@@ -5,7 +5,7 @@ import type {
   ResolveWithStickyResponse_MaterializationUpdate,
   ResolveWithStickyResponse_MissingMaterializationItem,
 } from './proto/api';
-import type { MaterializationRepository } from './StickyResolveStrategy';
+import type { MaterializationRepository } from './MaterializationRepository';
 
 /**
  * Handle missing materializations by loading from repository and building updated request.

@@ -14,14 +14,14 @@ import { createConfidenceServerProvider } from '../dist/index.node.js';
 async function main() {
   console.log('🚀 Starting Basic Confidence OpenFeature Example\n');
 
-  // Create provider with default RemoteResolverFallback strategy
+  // Create provider without materialization repository
   // The provider will automatically fall back to the remote API when
   // materializations are missing
   const provider = createConfidenceServerProvider({
     flagClientSecret: process.env.CONFIDENCE_CLIENT_SECRET || 'test.clientSecret',
     apiClientId: process.env.CONFIDENCE_API_CLIENT_ID || 'test-api-client-id',
     apiClientSecret: process.env.CONFIDENCE_API_CLIENT_SECRET || 'test-api-client-secret',
-    // materializationRepository is automatically set to RemoteResolverFallback
+    // materializationRepository is not used so expect RemoteResolverFallback to be used instead
   });
   // Set the provider
   try { 

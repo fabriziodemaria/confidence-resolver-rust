@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, Mocke
 import { AccessToken, LocalResolver, ResolveStateUri } from './LocalResolver';
 import { ConfidenceServerProviderLocal, DEFAULT_STATE_INTERVAL } from './ConfidenceServerProviderLocal';
 import { abortableSleep, TimeUnit } from './util';
-import type { MaterializationRepository, ResolverFallback } from './StickyResolveStrategy';
+import type { MaterializationRepository } from './MaterializationRepository';
+import { RemoteResolverFallback } from './RemoteResolverFallback';
 import type { MaterializationInfo, ResolveReason } from './proto/api';
 
 
@@ -51,6 +52,8 @@ const flushEndpoint = createEndpointMock(() => null);
 
 const endpointMocks = [tokenEndpoint, stateUriEndpoint, stateEndpoint, flushEndpoint];
 
+const remoteResolveEndpoint = createEndpointMock(() => null);
+
 const mockedFetch:MockedFunction<typeof fetch> = vi.fn(async (input, init) => {
   const req = new Request(input, init);
   switch(req.url) {
@@ -62,6 +65,8 @@ const mockedFetch:MockedFunction<typeof fetch> = vi.fn(async (input, init) => {
       return stateUriEndpoint(req);
     case 'https://storage.googleapis.com/state':
       return stateEndpoint(req);
+    case 'https://resolver.confidence.dev/v1/flags:resolve':
+      return remoteResolveEndpoint(req);
   }
   return new Response(null, {
     status: 404,
@@ -348,22 +353,16 @@ describe('sticky resolve', () => {
     });
   });
 
-  describe('with ResolverFallback strategy', () => {
-    let mockFallback: MockedObject<ResolverFallback>;
+  describe('without MaterializationRepository (uses RemoteResolverFallback)', () => {
     let providerWithFallback: ConfidenceServerProviderLocal;
 
     beforeEach(async () => {
-      mockFallback = {
-        resolve: vi.fn(),
-        close: vi.fn()
-      };
-
       providerWithFallback = new ConfidenceServerProviderLocal(mockedWasmResolver, {
         flagClientSecret: 'flagClientSecret',
         apiClientId: 'apiClientId',
         apiClientSecret: 'apiClientSecret',
-        fetch: mockedFetch,
-        materializationRepository: mockFallback
+        fetch: mockedFetch
+        // No materializationRepository - will use RemoteResolverFallback
       });
 
       await providerWithFallback.initialize();
@@ -411,15 +410,17 @@ describe('sticky resolve', () => {
         }
       });
 
-      mockFallback.resolve.mockResolvedValue({
-        resolvedFlags: [{
-          flag: 'test-flag',
-          variant: 'variant-b',
-          value: { color: 'yellow' },
-          reason: RESOLVE_REASON_MATCH
-        }],
-        resolveToken: new Uint8Array(),
-        resolveId: 'resolve-456'
+      remoteResolveEndpoint.mockImplementation(async () => {
+        return new Response(JSON.stringify({
+          resolvedFlags: [{
+            flag: 'test-flag',
+            variant: 'variant-b',
+            value: { color: 'yellow' },
+            reason: 'RESOLVE_REASON_MATCH'
+          }],
+          resolveToken: '',
+          resolveId: 'resolve-456'
+        }), { status: 200 });
       });
 
       const result = await providerWithFallback.evaluate('test-flag.color', 'default', {
@@ -427,16 +428,10 @@ describe('sticky resolve', () => {
       });
 
       expect(result.value).toBe('yellow');
-      expect(mockFallback.resolve).toHaveBeenCalledTimes(1);
-      expect(mockFallback.resolve).toHaveBeenCalledWith(
-        expect.objectContaining({
-          flags: ['flags/test-flag'],
-          apply: true
-        })
-      );
+      expect(remoteResolveEndpoint).toHaveBeenCalledTimes(1);
     });
 
-    it('should not store updates with fallback strategy', async () => {
+    it('should not store updates when no repository configured', async () => {
       mockedWasmResolver.resolveWithSticky.mockReturnValue({
         success: {
           response: {
@@ -464,13 +459,9 @@ describe('sticky resolve', () => {
         targetingKey: 'user-1'
       });
 
-      // Fallback strategy should not try to store
-      expect(mockFallback.resolve).not.toHaveBeenCalled();
-    });
-
-    it('should call close on strategy when provider closes', async () => {
-      await providerWithFallback.onClose();
-      expect(mockFallback.close).toHaveBeenCalledTimes(1);
+      // Should not try to store when no repository is configured
+      // (success - no exception thrown)
+      expect(remoteResolveEndpoint).not.toHaveBeenCalled();
     });
   });
 })

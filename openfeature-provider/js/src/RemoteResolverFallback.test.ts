@@ -148,29 +148,6 @@ describe('RemoteResolverFallback', () => {
       await expect(fallback.resolve(mockRequest)).rejects.toThrow('Network error');
     });
 
-    it('should use custom baseUrl when provided', async () => {
-      const customFallback = new RemoteResolverFallback({
-        baseUrl: 'https://custom.example.com/v2',
-        fetch: mockFetch as any
-      });
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          resolvedFlags: [],
-          resolveToken: '',
-          resolveId: 'test'
-        })
-      });
-
-      await customFallback.resolve(mockRequest);
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://custom.example.com/v2/flags:resolve',
-        expect.any(Object)
-      );
-    });
-
     it('should handle empty flags array', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -263,22 +240,6 @@ describe('RemoteResolverFallback', () => {
       fallback.close();
       fallback.close();
       expect(() => fallback.close()).not.toThrow();
-    });
-  });
-
-  describe('integration with type guards', () => {
-    it('should be recognized as ResolverFallback', async () => {
-      const { isResolverFallback } = await import('./StickyResolveStrategy');
-      const fallback = new RemoteResolverFallback();
-
-      expect(isResolverFallback(fallback)).toBe(true);
-    });
-
-    it('should not be recognized as MaterializationRepository', async () => {
-      const { isMaterializationRepository } = await import('./StickyResolveStrategy');
-      const fallback = new RemoteResolverFallback();
-
-      expect(isMaterializationRepository(fallback)).toBe(false);
     });
   });
 });

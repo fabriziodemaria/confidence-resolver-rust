@@ -1,23 +1,7 @@
 import type {
   MaterializationInfo,
-  ResolveFlagsRequest,
-  ResolveFlagsResponse,
 } from './proto/api';
 
-/**
- * Base interface for sticky resolve strategies.
- *
- * Sticky resolve ensures users get consistent variant assignments even when:
- * - Their context attributes change
- * - Flag configurations are updated
- * - New assignments are paused
- */
-export interface StickyResolveStrategy {
-  /**
-   * Close and cleanup any resources used by this strategy.
-   */
-  close(): void | Promise<void>;
-}
 
 /**
  * Strategy for storing and loading materialized assignments locally.
@@ -53,7 +37,7 @@ export interface StickyResolveStrategy {
  * }
  * ```
  */
-export interface MaterializationRepository extends StickyResolveStrategy {
+export interface MaterializationRepository {
   /**
    * Load ALL stored materialization assignments for a targeting unit.
    *
@@ -83,57 +67,10 @@ export interface MaterializationRepository extends StickyResolveStrategy {
     unit: string,
     assignments: Map<string, MaterializationInfo>
   ): Promise<void>;
-}
 
-/**
- * Strategy for falling back to remote Confidence API when materializations are missing.
- *
- * Use this when you want to:
- * - Delegate to Confidence servers for missing materialization data
- * - Leverage 90-day automatic TTL on the server side
- * - Simplify implementation (no local storage needed)
- *
- * This is the default strategy and recommended for most use cases.
- *
- * @example
- * ```typescript
- * const strategy = new RemoteResolverFallback(fetch, {
- *   apiClientId: 'client-id',
- *   apiClientSecret: 'api-secret'
- * });
- * ```
- */
-export interface ResolverFallback extends StickyResolveStrategy {
   /**
-   * Resolve flags using the remote Confidence API.
-   *
-   * Called when the local resolver is missing materialization data.
-   *
-   * @param request - The resolve flags request
-   * @returns Promise of resolved flags from remote
+   * Close and cleanup any resources used by this repository.
    */
-  resolve(request: ResolveFlagsRequest): Promise<ResolveFlagsResponse>;
+  close(): void | Promise<void>;
 }
 
-/**
- * Type guard to check if a strategy is a ResolverFallback.
- */
-export function isResolverFallback(
-  strategy: StickyResolveStrategy
-): strategy is ResolverFallback {
-  return 'resolve' in strategy && typeof (strategy as any).resolve === 'function';
-}
-
-/**
- * Type guard to check if a strategy is a MaterializationRepository.
- */
-export function isMaterializationRepository(
-  strategy: StickyResolveStrategy
-): strategy is MaterializationRepository {
-  return (
-    'loadMaterializedAssignmentsForUnit' in strategy &&
-    'storeAssignment' in strategy &&
-    typeof (strategy as any).loadMaterializedAssignmentsForUnit === 'function' &&
-    typeof (strategy as any).storeAssignment === 'function'
-  );
-}

@@ -23,12 +23,7 @@ import type {
 import { Fetch, FetchMiddleware, withAuth, withLogging, withResponse, withRetry, withRouter, withStallTimeout, withTimeout } from './fetch';
 import { scheduleWithFixedInterval, timeoutSignal, TimeUnit } from './util';
 import { AccessToken, LocalResolver, ResolveStateUri } from './LocalResolver';
-import {
-  type StickyResolveStrategy,
-  isResolverFallback,
-  isMaterializationRepository,
-  MaterializationRepository
-} from './StickyResolveStrategy';
+import type { MaterializationRepository } from './MaterializationRepository';
 import { handleMissingMaterializations, storeUpdates } from './materializationUtils';
 import { RemoteResolverFallback } from './RemoteResolverFallback';
 
@@ -41,7 +36,7 @@ export interface ProviderOptions {
   initializeTimeout?:number,
   flushInterval?:number,
   fetch?: typeof fetch,
-  materializationRepository?: MaterializationRepository | RemoteResolverFallback,
+  materializationRepository?: MaterializationRepository,
 }
 
 /**
@@ -59,7 +54,8 @@ export class ConfidenceServerProviderLocal implements Provider {
   private readonly main = new AbortController();
   private readonly fetch:Fetch;
   private readonly flushInterval:number;
-  private readonly stickyResolveStrategy: StickyResolveStrategy;
+  private readonly materializationRepository?: MaterializationRepository;
+  private readonly remoteResolverFallback: RemoteResolverFallback;
   private stateEtag:string | null = null;
 
 
@@ -68,7 +64,8 @@ export class ConfidenceServerProviderLocal implements Provider {
     // TODO better error handling
     // TODO validate options
     this.flushInterval = options.flushInterval ?? DEFAULT_FLUSH_INTERVAL;
-    this.stickyResolveStrategy = options.materializationRepository ?? new RemoteResolverFallback({ fetch: options.fetch });
+    this.materializationRepository = options.materializationRepository;
+    this.remoteResolverFallback = new RemoteResolverFallback({ fetch: options.fetch });
     const withConfidenceAuth = withAuth(async () => {
       const { accessToken, expiresIn } = await this.fetchToken();
       return [accessToken, new Date(Date.now() + 1000*expiresIn)]
@@ -140,7 +137,7 @@ export class ConfidenceServerProviderLocal implements Provider {
   async onClose(): Promise<void> {
     this.main.abort();
     await this.flush();
-    await this.stickyResolveStrategy.close();
+    await this.materializationRepository?.close();
   }
 
   // TODO test unknown flagClientSecret
@@ -159,7 +156,7 @@ export class ConfidenceServerProviderLocal implements Provider {
     const stickyRequest = {
       resolveRequest,
       materializationsPerUnit: {},
-      failFastOnSticky: isResolverFallback(this.stickyResolveStrategy)
+      failFastOnSticky: !this.materializationRepository
     };
 
     const response = await this.resolveWithStickyInternal(stickyRequest);
@@ -181,8 +178,8 @@ export class ConfidenceServerProviderLocal implements Provider {
 
       // Store updates if present (only for MaterializationRepository)
       // Fire-and-forget - doesn't block resolve path
-      if (updates.length > 0 && isMaterializationRepository(this.stickyResolveStrategy)) {
-        storeUpdates(updates, this.stickyResolveStrategy);
+      if (updates.length > 0 && this.materializationRepository) {
+        storeUpdates(updates, this.materializationRepository);
       }
 
       return flagsResponse;
@@ -192,24 +189,18 @@ export class ConfidenceServerProviderLocal implements Provider {
     if (response.missingMaterializations) {
       const { items } = response.missingMaterializations;
 
-      // Check for ResolverFallback first - return early if so
-      if (isResolverFallback(this.stickyResolveStrategy)) {
-        return await this.stickyResolveStrategy.resolve(request.resolveRequest!);
+      // If we don't have a MaterializationRepository, use the remote resolver fallback
+      if (!this.materializationRepository) {
+        return await this.remoteResolverFallback.resolve(request.resolveRequest!);
       }
 
       // Handle MaterializationRepository case
-      if (isMaterializationRepository(this.stickyResolveStrategy)) {
-        const updatedRequest = await handleMissingMaterializations(
-          request,
-          items,
-          this.stickyResolveStrategy
-        );
-        return this.resolveWithStickyInternal(updatedRequest);
-      }
-
-      throw new Error(
-        `Unknown sticky resolve strategy: ${this.stickyResolveStrategy.constructor.name}`
+      const updatedRequest = await handleMissingMaterializations(
+        request,
+        items,
+        this.materializationRepository
       );
+      return this.resolveWithStickyInternal(updatedRequest);
     }
 
     throw new Error('Invalid response: resolve result not set');

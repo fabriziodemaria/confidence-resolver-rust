@@ -319,4 +319,4 @@ const provider = createConfidenceServerProvider({
 
 - [Confidence Documentation](https://confidence.spotify.com/docs)
 - [OpenFeature Documentation](https://openfeature.dev/docs)
-- [Sticky Resolve Strategy Interface](../src/StickyResolveStrategy.ts)
+- [Materialization Repository Interface](../src/MaterializationRepository.ts)
