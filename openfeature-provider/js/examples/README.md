@@ -176,7 +176,7 @@ const provider = createConfidenceServerProvider({
   flagClientSecret: 'client-secret',
   apiClientId: 'api-id',
   apiClientSecret: 'api-secret',
-  stickyResolveStrategy: new MyRepository()
+  materializationRepository: new MyRepository()
 });
 ```
 
@@ -243,7 +243,7 @@ const provider = createConfidenceServerProvider({
   flagClientSecret: process.env.CONFIDENCE_CLIENT_SECRET!,
   apiClientId: process.env.CONFIDENCE_API_CLIENT_ID!,
   apiClientSecret: process.env.CONFIDENCE_API_CLIENT_SECRET!,
-  stickyResolveStrategy: new RedisMaterializationRepository(redis)
+  materializationRepository: new RedisMaterializationRepository(redis)
 });
 ```
 
@@ -294,7 +294,7 @@ const provider = createConfidenceServerProvider({
   flagClientSecret: process.env.CONFIDENCE_CLIENT_SECRET!,
   apiClientId: process.env.CONFIDENCE_API_CLIENT_ID!,
   apiClientSecret: process.env.CONFIDENCE_API_CLIENT_SECRET!,
-  stickyResolveStrategy: new PostgresMaterializationRepository(pool)
+  materializationRepository: new PostgresMaterializationRepository(pool)
 });
 ```
 

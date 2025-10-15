@@ -48,13 +48,14 @@ async function init() {
     flagClientSecret: config.clientSecret,
     apiClientId: config.apiClientId,
     apiClientSecret: config.apiClientSecret,
-    stickyResolveStrategy: inMemoryRepository,
+    materializationRepository: inMemoryRepository,
   });
 
   await OpenFeature.setProviderAndWait(provider);
 
   const initTime = performance.now() - startTime;
   console.log(`✅ Provider initialized in ${(initTime / 1000).toFixed(2)}s\n`);
+  return inMemoryRepository;
 }
 
 /**

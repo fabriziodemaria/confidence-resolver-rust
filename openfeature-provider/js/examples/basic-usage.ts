@@ -21,7 +21,7 @@ async function main() {
     flagClientSecret: process.env.CONFIDENCE_CLIENT_SECRET || 'test.clientSecret',
     apiClientId: process.env.CONFIDENCE_API_CLIENT_ID || 'test-api-client-id',
     apiClientSecret: process.env.CONFIDENCE_API_CLIENT_SECRET || 'test-api-client-secret',
-    // stickyResolveStrategy is automatically set to RemoteResolverFallback
+    // materializationRepository is automatically set to RemoteResolverFallback
   });
   // Set the provider
   try { 
