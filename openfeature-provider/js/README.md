@@ -71,10 +71,85 @@ await provider.onClose();
 - `initializeTimeout` (number, optional): Max ms to wait for initial state fetch. Defaults to 30_000.
 - `flushInterval` (number, optional): Interval in ms for sending evaluation logs. Defaults to 10_000.
 - `fetch` (optional): Custom `fetch` implementation. Required for Node < 18; for Node 18+ you can omit.
+- `materializationRepository` (optional): Custom storage for sticky assignments. See [Sticky Assignments](#sticky-assignments) below.
 
 The provider periodically:
 - Refreshes resolver state (default every 30s)
 - Flushes flag evaluation logs to the backend
+
+---
+
+## Sticky Assignments
+
+Confidence supports "sticky" flag assignments to ensure users receive consistent variant assignments even when their context changes or flag configurations are updated. 
+
+### How it works
+
+When a flag is evaluated for a user, Confidence creates a "materialization" - a snapshot of which variant that user was assigned. On subsequent evaluations, the same variant is returned even if:
+- The user's context attributes change (e.g., different country, device type)
+- The flag's targeting rules are modified
+- New assignments are paused
+
+### Default behavior (no repository)
+
+If you don't provide a `materializationRepository`, the provider automatically falls back to resolve with our cloud resolvers:
+- Materializations are stored on Confidence servers with a 90-day TTL
+- No local storage or database setup required
+- Best for most use cases
+
+```ts
+const provider = createConfidenceServerProvider({
+  flagClientSecret: process.env.CONFIDENCE_FLAG_CLIENT_SECRET!,
+  apiClientId: process.env.CONFIDENCE_API_CLIENT_ID!,
+  apiClientSecret: process.env.CONFIDENCE_API_CLIENT_SECRET!,
+  // materializationRepository is optional - uses remote storage by default
+});
+```
+
+### Custom storage with MaterializationRepository
+
+For advanced use cases where you want full control over materialization storage (e.g., Redis, database, file system), implement the `MaterializationRepository` interface:
+
+```ts
+interface MaterializationRepository {
+  /**
+   * Load ALL stored materialization assignments for a targeting unit.
+   *
+   * @param unit - The targeting key (e.g., user ID, session ID)
+   * @param materialization - The materialization ID being requested (for context)
+   * @returns Map of materialization ID to MaterializationInfo for this unit
+   */
+  loadMaterializedAssignmentsForUnit(
+    unit: string,
+    materialization: string
+  ): Promise<Map<string, MaterializationInfo>>;
+
+  /**
+   * Store materialization assignments for a targeting unit.
+   *
+   * @param unit - The targeting key (e.g., user ID, session ID)
+   * @param assignments - Map of materialization ID to MaterializationInfo
+   */
+  storeAssignment(
+    unit: string,
+    assignments: Map<string, MaterializationInfo>
+  ): Promise<void>;
+
+  /**
+   * Close and cleanup any resources used by this repository.
+   */
+  close(): void | Promise<void>;
+}
+```
+
+**Key points:**
+- `loadMaterializedAssignmentsForUnit` should return ALL materializations for the given unit, not just the one requested
+- This allows efficient bulk loading from your storage system
+- The provider handles caching and coordination internally
+
+See [MAT_REPO_EXAMPLES.md](./MAT_REPO_EXAMPLES.md) for complete implementation examples including:
+- In-memory repository for testing
+- File-backed repository for persistent storage
 
 ---
 
