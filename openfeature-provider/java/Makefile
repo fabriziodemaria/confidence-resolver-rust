@@ -20,9 +20,23 @@ ifneq ($(IN_DOCKER_BUILD),1)
 $(LOCAL_WASM):
 	$(MAKE) -C $(ROOT) wasm/confidence_resolver.wasm
 
-$(RESOURCES_WASM): $(LOCAL_WASM)
+$(RESOURCES_WASM):
 	@mkdir -p $(dir $@)
-	cp $(LOCAL_WASM) $@
+	@if [ -n "$$CONFIDENCE_RESOLVER_VERSION" ]; then \
+	  REPO="$$CONFIDENCE_RESOLVER_REPO"; \
+	  if [ -z "$$REPO" ]; then REPO="$$GITHUB_REPOSITORY"; fi; \
+	  if [ -z "$$REPO" ]; then REPO=$(shell git config --get remote.origin.url | sed -E 's#.*[:/]([^/]+/[^/]+?)(\\.git)?$#\\1#'); fi; \
+	  URL="https://github.com/$$REPO/releases/download/confidence_resolver-v$$CONFIDENCE_RESOLVER_VERSION/confidence_resolver.wasm"; \
+	  echo "Downloading WASM from $$URL"; \
+	  if [ -n "$$GITHUB_TOKEN" ]; then \
+	    curl -fsSL -H "Authorization: Bearer $$GITHUB_TOKEN" -o $@ "$$URL"; \
+	  else \
+	    curl -fsSL -o $@ "$$URL"; \
+	  fi; \
+	else \
+	  $(MAKE) -C $(ROOT) wasm/confidence_resolver.wasm; \
+	  cp $(LOCAL_WASM) $@; \
+	fi
 else
 # In Docker, the WASM is already copied into src/main/resources by the Dockerfile
 $(RESOURCES_WASM):

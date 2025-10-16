@@ -11,7 +11,7 @@ GEN_TS := $(GEN_DIR)/messages.ts $(GEN_DIR)/api.ts
 PROTO_SRC := proto/messages.proto proto/api.proto
 SRC := $(shell find src -name '*.ts')
 CONFIG := package.json yarn.lock tsconfig.json tsdown.config.ts vitest.config.ts
-WASM_ARTIFACT := ../confidence_resolver.wasm
+WASM_ARTIFACT := ../../wasm/confidence_resolver.wasm
 
 .PHONY: install build run clean 
 
@@ -21,7 +21,21 @@ ifneq ($(IN_DOCKER_BUILD),1)
 endif
 
 $(WASM_ARTIFACT):
-	$(MAKE) -C $(ROOT) wasm/confidence_resolver.wasm
+	@mkdir -p $(dir $@)
+	@if [ -n "$$CONFIDENCE_RESOLVER_VERSION" ]; then \
+	  REPO="$$CONFIDENCE_RESOLVER_REPO"; \
+	  if [ -z "$$REPO" ]; then REPO="$$GITHUB_REPOSITORY"; fi; \
+	  if [ -z "$$REPO" ]; then REPO=$(shell git config --get remote.origin.url | sed -E 's#.*[:/]([^/]+/[^/]+?)(\\.git)?$#\\1#'); fi; \
+	  URL="https://github.com/$$REPO/releases/download/confidence_resolver-v$$CONFIDENCE_RESOLVER_VERSION/confidence_resolver.wasm"; \
+	  echo "Downloading WASM from $$URL"; \
+	  if [ -n "$$GITHUB_TOKEN" ]; then \
+	    curl -fsSL -H "Authorization: Bearer $$GITHUB_TOKEN" -o $@ "$$URL"; \
+	  else \
+	    curl -fsSL -o $@ "$$URL"; \
+	  fi; \
+	else \
+	  $(MAKE) -C $(ROOT) wasm/confidence_resolver.wasm; \
+	fi
 
 # Install dependencies only when package manifests change
 $(INSTALL_STAMP): package.json yarn.lock
