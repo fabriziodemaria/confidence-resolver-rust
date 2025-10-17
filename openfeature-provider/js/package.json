@@ -1,6 +1,6 @@
 {
   "name": "@spotify-confidence/openfeature-server-provider-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "confidenceResolverVersion": "0.5.2",
   "private": true,
   "description": "Spotify Confidence Open Feature provider",
