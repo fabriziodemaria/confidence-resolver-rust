@@ -19,7 +19,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 
 const BUCKETS: u64 = 1_000_000;
-const TARGETING_KEY: &str = "targeting_key";
+const TARGETING_KEY: &str = "targeting_key_test";
 const NULL: Value = Value { kind: None };
 
 const MAX_NO_OF_FLAGS_TO_BATCH_RESOLVE: usize = 200;
