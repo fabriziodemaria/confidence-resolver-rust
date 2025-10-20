@@ -12,6 +12,13 @@ A high-performance OpenFeature provider for [Confidence](https://confidence.spot
 - **Exposure Logging**: Fully supported exposure logging (and other resolve analytics)
 - **OpenFeature Compatible**: Works with the standard OpenFeature SDK
 
+Using WASM confidence resolver version:
+<!-- x-release-please-start-version -->
+```xml
+0.1.8
+```
+<!-- x-release-please-end -->
+
 ## Installation
 
 Add this dependency to your `pom.xml`:
