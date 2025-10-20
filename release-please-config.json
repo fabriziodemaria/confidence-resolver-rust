@@ -25,7 +25,8 @@
       "path": "wasm/rust-guest",
       "release-type": "rust",
       "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0"
+      "initial-version": "0.1.0",
+      "extra-files": ["../../openfeature-provider/java/WASM_VERSION"]
     },
     "openfeature-provider-local-java": {
       "path": "openfeature-provider/java",
