@@ -131,7 +131,7 @@ jobs:
   publish-java-provider-release:
     needs: release
     runs-on: ubuntu-latest
-    if: ${{ needs.release.outputs.releases_created == 'true' && contains(needs.release.outputs['openfeature-provider-java--release_created'], 'true') }}
+    if: ${{ needs.release.outputs.releases_created == 'true' && needs.release.outputs['openfeature-provider-java--release_created'] == 'true' }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
@@ -155,3 +155,35 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           GPG_PASS: ${{ secrets.SIGN_KEY_PASS }}
+
+  publish-js-provider-release:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ needs.release.outputs.releases_created == 'true' && needs.release.outputs['openfeature-provider-js--release_created'] == 'true' }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs['openfeature-provider-js--tag_name'] }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Enable Corepack for Yarn
+        run: corepack enable
+
+      - name: Build WASM artifact
+        run: make wasm/confidence_resolver.wasm
+
+      - name: Build JS package
+        working-directory: openfeature-provider/js
+        run: make build
+
+      - name: Publish to npm
+        working-directory: openfeature-provider/js
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
