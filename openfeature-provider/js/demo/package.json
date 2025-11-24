@@ -1,0 +1,20 @@
+{
+  "name": "confidence-demo-js",
+  "version": "1.0.0",
+  "description": "Demo application for Confidence OpenFeature Local Provider (JavaScript)",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@openfeature/server-sdk": "^1.19.0",
+    "@spotify-confidence/openfeature-server-provider-local": "file:../",
+    "dotenv": "^17.2.2"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "Spotify",
+  "license": "Apache-2.0"
+}

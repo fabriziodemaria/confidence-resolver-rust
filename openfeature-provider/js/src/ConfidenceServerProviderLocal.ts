@@ -10,6 +10,7 @@ import type {
 } from '@openfeature/server-sdk';
 import { ResolveReason, SdkId } from './proto/api';
 import { ResolveFlagsRequest, ResolveFlagsResponse, ResolveWithStickyRequest } from './proto/api';
+import { WriteFlagLogsRequest } from './proto/test-only';
 import { VERSION } from './version';
 import {
   Fetch,
@@ -26,7 +27,7 @@ import { scheduleWithFixedInterval, timeoutSignal, TimeUnit } from './util';
 import { AccessToken, LocalResolver, ResolveStateUri } from './LocalResolver';
 
 export const DEFAULT_STATE_INTERVAL = 30_000;
-export const DEFAULT_FLUSH_INTERVAL = 10_000;
+export const DEFAULT_FLUSH_INTERVAL = 13_000;
 export interface ProviderOptions {
   flagClientSecret: string;
   apiClientId: string;
@@ -284,6 +285,28 @@ export class ConfidenceServerProviderLocal implements Provider {
       // nothing to send
       return;
     }
+
+    // Decode and print telemetry data
+    try {
+      const decoded = WriteFlagLogsRequest.decode(writeFlagLogRequest);
+      if (decoded.telemetryData && decoded.telemetryData.length > 0) {
+        console.log('[TelemetryData] Emitting telemetry data:');
+        console.log('  Raw bytes (base64):', Buffer.from(decoded.telemetryData).toString('base64'));
+        console.log('  Length:', decoded.telemetryData.length, 'bytes');
+
+        // Try to decode as UTF-8 text
+        try {
+          const textDecoder = new TextDecoder('utf-8');
+          const text = textDecoder.decode(decoded.telemetryData);
+          console.log('  As text:', text);
+        } catch (e) {
+          // Not valid UTF-8, skip text representation
+        }
+      }
+    } catch (e) {
+      console.error('[TelemetryData] Error decoding WriteFlagLogsRequest:', e);
+    }
+
     await this.fetch('https://resolver.confidence.dev/v1/flagLogs:write', {
       method: 'post',
       signal,

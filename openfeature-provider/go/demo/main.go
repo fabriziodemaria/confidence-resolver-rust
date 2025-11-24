@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +19,9 @@ func main() {
 	apiClientSecret := getEnvOrDefault("CONFIDENCE_API_CLIENT_SECRET", "API_SECRET")
 	clientSecret := getEnvOrDefault("CONFIDENCE_CLIENT_SECRET", "CLIENT_SECRET")
 
+	// Set poll interval for state updates and log flushing to 13 seconds
+	os.Setenv("CONFIDENCE_RESOLVER_POLL_INTERVAL_SECONDS", "13")
+
 	// Validate configuration - fail fast on placeholder credentials
 	if apiClientID == "API_ID" || apiClientSecret == "API_SECRET" || clientSecret == "CLIENT_SECRET" {
 		log.Fatalf("ERROR: Placeholder credentials detected. Please set environment variables:\n" +
@@ -33,6 +35,7 @@ func main() {
 	}
 
 	log.Println("Starting Confidence OpenFeature Local Provider Demo")
+	log.Println("Demo will resolve flags every 5 seconds and flush logs every 13 seconds")
 	log.Println("")
 
 	// Create provider with simple configuration
@@ -60,10 +63,6 @@ func main() {
 	// Create OpenFeature client
 	client := openfeature.NewClient("demo-app")
 
-	// Demo: Evaluate flags with multiple concurrent threads
-	log.Println("=== Flag Evaluation Demo with 10 Concurrent Threads ===")
-	log.Println("")
-
 	// Create evaluation context
 	evalCtx := openfeature.NewEvaluationContext(
 		"user-123",
@@ -73,75 +72,50 @@ func main() {
 		},
 	)
 
-	// Run 5 concurrent threads continuously for 5 second
-	var wg sync.WaitGroup
-	numThreads := 5
-	runDuration := 5 * time.Second
-
-	log.Printf("Starting %d threads to run for %v to test reload and flush...", numThreads, runDuration)
+	log.Println("=== Starting Flag Resolution Loop ===")
+	log.Println("Resolving flags every 5 seconds indefinitely...")
+	log.Println("Press Ctrl+C to stop")
 	log.Println("")
 
-	startTime := time.Now()
-	stopTime := startTime.Add(runDuration)
+	// Create a ticker for 5-second flag resolution
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
-	// Shared counters for throughput calculation
+	// Shared counters for statistics
 	var totalSuccess, totalErrors int64
 
-	for i := 0; i < numThreads; i++ {
-		wg.Add(1)
-		threadID := i
-		go func() {
-			defer wg.Done()
-
-			var successCount, errorCount int64
-			iteration := 0
-
-			for time.Now().Before(stopTime) {
-				// Use ObjectValueDetails to get the full flag object
-				result, err := client.ObjectValueDetails(ctx, "mattias-boolean-flag", map[string]interface{}{}, evalCtx)
-				if err != nil {
-					errorCount++
-					if iteration == 0 { // Only log first error per thread
-						log.Printf("Thread %d: Error: %v", threadID, err)
-					}
-				} else {
-					successCount++
-					if iteration == 0 { // Only log first success per thread
-						log.Printf("Thread %d: First result - Value: %+v, Variant: %s, Reason: %s",
-							threadID, result.Value, result.Variant, result.Reason)
-					}
-				}
-				iteration++
-
-				// Small sleep to avoid tight loop
-				time.Sleep(1 * time.Millisecond)
-			}
-
-			// Update shared counters atomically
-			atomic.AddInt64(&totalSuccess, successCount)
-			atomic.AddInt64(&totalErrors, errorCount)
-
-			log.Printf("Thread %d complete after %v: %d successes, %d errors (%d total iterations)",
-				threadID, time.Since(startTime), successCount, errorCount, iteration)
-		}()
+	// Resolve once immediately before starting the ticker loop
+	result, err := client.ObjectValueDetails(ctx, "mattias-boolean-flag", map[string]interface{}{}, evalCtx)
+	if err != nil {
+		atomic.AddInt64(&totalErrors, 1)
+		log.Printf("[%s] Error resolving flag: %v", time.Now().Format("15:04:05"), err)
+	} else {
+		atomic.AddInt64(&totalSuccess, 1)
+		log.Printf("[%s] Flag resolved - Value: %+v, Variant: %s, Reason: %s",
+			time.Now().Format("15:04:05"), result.Value, result.Variant, result.Reason)
 	}
 
-	// Wait for all threads to complete
-	wg.Wait()
+	// Run indefinitely, resolving flags every 5 seconds
+	for range ticker.C {
+		result, err := client.ObjectValueDetails(ctx, "mattias-boolean-flag", map[string]interface{}{}, evalCtx)
+		if err != nil {
+			atomic.AddInt64(&totalErrors, 1)
+			log.Printf("[%s] Error resolving flag: %v", time.Now().Format("15:04:05"), err)
+		} else {
+			atomic.AddInt64(&totalSuccess, 1)
+			log.Printf("[%s] Flag resolved - Value: %+v, Variant: %s, Reason: %s",
+				time.Now().Format("15:04:05"), result.Value, result.Variant, result.Reason)
+		}
 
-	duration := time.Since(startTime)
-	totalRequests := totalSuccess + totalErrors
-	throughputPerSecond := float64(totalRequests) / duration.Seconds()
-
-	log.Println("")
-	log.Println("=== Demo Complete ===")
-	log.Printf("Total time: %v", duration)
-	log.Printf("Throughput: %.2f requests/second", throughputPerSecond)
-	log.Printf("Average latency: %.2f ms/request", duration.Seconds()*1000/float64(totalRequests))
-	log.Println("Check logs above for per-thread statistics and state reload/flush messages")
-	log.Println("")
-
-	log.Println("At the end of main... shutting down...")
+		// Print statistics every 10 resolutions
+		total := atomic.LoadInt64(&totalSuccess) + atomic.LoadInt64(&totalErrors)
+		if total%10 == 0 {
+			success := atomic.LoadInt64(&totalSuccess)
+			errors := atomic.LoadInt64(&totalErrors)
+			log.Printf("[%s] Statistics: %d total resolutions (%d successes, %d errors)",
+				time.Now().Format("15:04:05"), total, success, errors)
+		}
+	}
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
@@ -149,54 +123,4 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
-}
-
-func printBooleanResult(result openfeature.BooleanEvaluationDetails) {
-	log.Printf("  Value: %v", result.Value)
-	log.Printf("  Variant: %s", result.Variant)
-	log.Printf("  Reason: %s", result.Reason)
-	if result.ErrorCode != "" {
-		log.Printf("  Error Code: %s", result.ErrorCode)
-		log.Printf("  Error Message: %s", result.ErrorMessage)
-	}
-}
-
-func printStringResult(result openfeature.StringEvaluationDetails) {
-	log.Printf("  Value: %s", result.Value)
-	log.Printf("  Variant: %s", result.Variant)
-	log.Printf("  Reason: %s", result.Reason)
-	if result.ErrorCode != "" {
-		log.Printf("  Error Code: %s", result.ErrorCode)
-		log.Printf("  Error Message: %s", result.ErrorMessage)
-	}
-}
-
-func printIntResult(result openfeature.IntEvaluationDetails) {
-	log.Printf("  Value: %d", result.Value)
-	log.Printf("  Variant: %s", result.Variant)
-	log.Printf("  Reason: %s", result.Reason)
-	if result.ErrorCode != "" {
-		log.Printf("  Error Code: %s", result.ErrorCode)
-		log.Printf("  Error Message: %s", result.ErrorMessage)
-	}
-}
-
-func printFloatResult(result openfeature.FloatEvaluationDetails) {
-	log.Printf("  Value: %f", result.Value)
-	log.Printf("  Variant: %s", result.Variant)
-	log.Printf("  Reason: %s", result.Reason)
-	if result.ErrorCode != "" {
-		log.Printf("  Error Code: %s", result.ErrorCode)
-		log.Printf("  Error Message: %s", result.ErrorMessage)
-	}
-}
-
-func printObjectResult(result openfeature.InterfaceEvaluationDetails) {
-	log.Printf("  Value: %+v", result.Value)
-	log.Printf("  Variant: %s", result.Variant)
-	log.Printf("  Reason: %s", result.Reason)
-	if result.ErrorCode != "" {
-		log.Printf("  Error Code: %s", result.ErrorCode)
-		log.Printf("  Error Message: %s", result.ErrorMessage)
-	}
 }

@@ -78,6 +78,9 @@ public class GrpcWasmFlagLogger implements WasmFlagLogger {
 
     // If flag_assigned list is small enough, send everything as-is
     if (flagAssignedCount <= MAX_FLAG_ASSIGNED_PER_CHUNK) {
+      if (request.hasTelemetryData()) {
+        logger.info("Sending TelemetryData: {}", request.getTelemetryData());
+      }
       sendAsync(request);
       return;
     }
@@ -107,6 +110,7 @@ public class GrpcWasmFlagLogger implements WasmFlagLogger {
       // Include telemetry and resolve info only in the first chunk
       if (i == 0) {
         if (request.hasTelemetryData()) {
+          logger.info("Sending TelemetryData: {}", request.getTelemetryData());
           chunkBuilder.setTelemetryData(request.getTelemetryData());
         }
         chunkBuilder
